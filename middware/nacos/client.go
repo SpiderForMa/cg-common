@@ -32,6 +32,8 @@ func InitConfigClient(ip string, port uint64, namespaceID string) *Client {
 		NotLoadCacheAtStart: true,        // 是否在启动时加载缓存
 		LogDir:              "/tmp/nacos/log",
 		CacheDir:            "/tmp/nacos/cache",
+		Username:            "nacos",
+		Password:            "nacos",
 		LogLevel:            "debug",
 	}
 
