@@ -29,7 +29,7 @@ func InitConfigClient(ip string, port uint64, namespaceID string) *Client {
 	clientConfig := constant.ClientConfig{
 		NamespaceId:         namespaceID, // 命名空间ID
 		TimeoutMs:           5000,        // 请求超时时间
-		NotLoadCacheAtStart: true,        // 是否在启动时加载缓存
+		NotLoadCacheAtStart: false,       // 是否在启动时加载缓存
 		LogDir:              "/tmp/nacos/log",
 		CacheDir:            "/tmp/nacos/cache",
 		Username:            "nacos",
