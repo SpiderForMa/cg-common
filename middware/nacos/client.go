@@ -8,6 +8,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"log"
+	"os"
 )
 
 type Client struct {
@@ -25,16 +26,25 @@ func InitConfigClient(ip string, port uint64, namespaceID string) *Client {
 			Scheme:      "http",
 		},
 	}
+
+	// Nacos客户端配置
+	username := os.Getenv("NACOS_USER")
+	if username == "" {
+		username = "nacos" // 默认用户名
+	}
+
+	password := os.Getenv("NACOS_PASS")
+	if password == "" {
+		password = "nacos" // 默认密码
+	}
+
 	// Nacos客户端配置
 	clientConfig := constant.ClientConfig{
 		NamespaceId:         namespaceID, // 命名空间ID
 		TimeoutMs:           5000,        // 请求超时时间
-		NotLoadCacheAtStart: false,       // 是否在启动时加载缓存
-		LogDir:              "/tmp/nacos/log",
-		CacheDir:            "/tmp/nacos/cache",
-		Username:            "nacos",
-		Password:            "nacos",
-		LogLevel:            "debug",
+		NotLoadCacheAtStart: true,        // 是否在启动时加载缓存
+		Username:            username,    // 使用从环境变量或默认的用户名
+		Password:            password,    // 使用从环境变量或默认的密码
 	}
 
 	// 创建 Nacos 配置客户端

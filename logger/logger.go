@@ -8,9 +8,13 @@ import (
 
 var logger *log.Logger
 
-func InitLog(appName string, level log.Level) {
+func InitLog(appName string, level string) {
 	logger = log.New(os.Stderr)
-	logger.SetLevel(level)
+	if level == "DEBUG" {
+		logger.SetLevel(log.DebugLevel)
+	} else {
+		logger.SetLevel(log.InfoLevel)
+	}
 	logger.SetPrefix(appName)
 	logger.SetReportTimestamp(true)
 	logger.SetTimeFormat(time.DateTime)
@@ -37,6 +41,14 @@ func Debug(format string, args ...interface{}) {
 		logger.Debug(format)
 	} else {
 		logger.Debugf(format, args...)
+	}
+}
+
+func Warn(format string, args ...interface{}) {
+	if len(args) == 0 {
+		logger.Warn(format)
+	} else {
+		logger.Warnf(format, args...)
 	}
 }
 
