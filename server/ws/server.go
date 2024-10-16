@@ -19,7 +19,7 @@ type WebSocketHandler interface {
 type WebSocketServer struct {
 	upgrader websocket.Upgrader
 	handler  WebSocketHandler
-	clients  map[string]*websocket.Conn
+	clients  map[string]map[string]*websocket.Conn
 	mu       sync.Mutex
 }
 
@@ -32,7 +32,7 @@ func NewWebSocketServer(handler WebSocketHandler) *WebSocketServer {
 			},
 		},
 		handler: handler,
-		clients: make(map[string]*websocket.Conn),
+		clients: make(map[string]map[string]*websocket.Conn),
 	}
 }
 
@@ -40,9 +40,10 @@ func NewWebSocketServer(handler WebSocketHandler) *WebSocketServer {
 func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Request) {
 
 	// 从查询参数获取用户 ID
+	gameID := r.URL.Query().Get("gameId")
 	userID := r.URL.Query().Get("userId")
-	if userID == "" {
-		http.Error(w, "userId is required", http.StatusBadRequest)
+	if gameID == "" || userID == "" {
+		http.Error(w, "gameId and userId are required", http.StatusBadRequest)
 		return
 	}
 
@@ -55,17 +56,21 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 	// 添加到连接列表
 	ws.mu.Lock()
-	ws.clients[userID] = conn
+	if ws.clients[gameID] == nil {
+		ws.clients[gameID] = make(map[string]*websocket.Conn)
+	}
+	ws.clients[gameID][userID] = conn
 	ws.mu.Unlock()
 
 	defer func() {
 		ws.handler.OnClose(conn)
 		ws.mu.Lock()
-		delete(ws.clients, userID)
+		delete(ws.clients[gameID], userID) // 从游戏的连接列表中移除
 		ws.mu.Unlock()
 		conn.Close()
 	}()
 
+	// 处理消息
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
@@ -77,10 +82,10 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 }
 
 // Broadcast 向所有连接的客户端发送消息
-func (ws *WebSocketServer) Broadcast(message []byte) {
+func (ws *WebSocketServer) Broadcast(gameID string, message []byte) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
-	for _, conn := range ws.clients {
+	for _, conn := range ws.clients[gameID] {
 		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			ws.handler.OnError(err)
 			conn.Close()
@@ -89,15 +94,15 @@ func (ws *WebSocketServer) Broadcast(message []byte) {
 }
 
 // SendToUser 向指定用户发送消息
-func (ws *WebSocketServer) SendToUser(userID string, message []byte) {
+func (ws *WebSocketServer) SendToUser(gameID string, userID string, message []byte) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
-	conn, exists := ws.clients[userID]
+	conn, exists := ws.clients[gameID][userID]
 	if exists {
 		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			ws.handler.OnError(err)
 			conn.Close()
-			delete(ws.clients, userID)
+			delete(ws.clients[gameID], userID)
 		}
 	} else {
 		fmt.Printf("用户 %s 不在线\n", userID)
@@ -105,16 +110,16 @@ func (ws *WebSocketServer) SendToUser(userID string, message []byte) {
 }
 
 // SendToUsers 向指定用户列表发送消息
-func (ws *WebSocketServer) SendToUsers(userIDs []string, message []byte) {
+func (ws *WebSocketServer) SendToUsers(gameID string, userIDs []string, message []byte) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	for _, userID := range userIDs {
-		conn, exists := ws.clients[userID]
+		conn, exists := ws.clients[gameID][userID]
 		if exists {
 			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				ws.handler.OnError(err)
 				conn.Close()
-				delete(ws.clients, userID)
+				delete(ws.clients[gameID], userID)
 			}
 		} else {
 			fmt.Printf("用户 %s 不在线\n", userID)
