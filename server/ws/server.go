@@ -9,18 +9,24 @@ import (
 
 // WebSocketHandler 定义 WebSocket 事件处理器的接口
 type WebSocketHandler interface {
-	OnOpen(conn *websocket.Conn)
-	OnClose(conn *websocket.Conn)
+	OnOpen(conn *CustomConn)
+	OnClose(conn *CustomConn)
 	OnError(err error)
-	OnMessage(conn *websocket.Conn, msg []byte)
+	OnMessage(conn *CustomConn, msg []byte)
 }
 
 // WebSocketServer 封装 WebSocket 服务器
 type WebSocketServer struct {
 	upgrader websocket.Upgrader
 	handler  WebSocketHandler
-	clients  map[string]map[string]*websocket.Conn
+	clients  map[string]map[string]*CustomConn
 	mu       sync.Mutex
+}
+
+type CustomConn struct {
+	Conn   *websocket.Conn
+	AppID  string
+	UserID string
 }
 
 // NewWebSocketServer 创建新的 WebSocket 服务器
@@ -32,18 +38,17 @@ func NewWebSocketServer(handler WebSocketHandler) *WebSocketServer {
 			},
 		},
 		handler: handler,
-		clients: make(map[string]map[string]*websocket.Conn),
+		clients: make(map[string]map[string]*CustomConn),
 	}
 }
 
 // HandleConnection 处理 WebSocket 连接
 func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Request) {
 
-	// 从查询参数获取用户 ID
-	gameID := r.URL.Query().Get("gameId")
-	userID := r.URL.Query().Get("userId")
-	if gameID == "" || userID == "" {
-		http.Error(w, "gameId and userId are required", http.StatusBadRequest)
+	appID := r.URL.Query().Get("appID")
+	userID := r.URL.Query().Get("userID")
+	if userID == "" || appID == "" {
+		http.Error(w, "appID and userID are required", http.StatusBadRequest)
 		return
 	}
 
@@ -52,20 +57,28 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 		ws.handler.OnError(err)
 		return
 	}
-	ws.handler.OnOpen(conn)
+
+	// 创建 CustomConn
+	customConn := &CustomConn{
+		Conn:   conn,
+		AppID:  appID,
+		UserID: userID,
+	}
+
+	ws.handler.OnOpen(customConn)
 
 	// 添加到连接列表
 	ws.mu.Lock()
-	if ws.clients[gameID] == nil {
-		ws.clients[gameID] = make(map[string]*websocket.Conn)
+	if ws.clients[appID] == nil {
+		ws.clients[appID] = make(map[string]*CustomConn)
 	}
-	ws.clients[gameID][userID] = conn
+	ws.clients[appID][userID] = customConn
 	ws.mu.Unlock()
 
 	defer func() {
-		ws.handler.OnClose(conn)
+		ws.handler.OnClose(customConn)
 		ws.mu.Lock()
-		delete(ws.clients[gameID], userID) // 从游戏的连接列表中移除
+		delete(ws.clients[appID], userID)
 		ws.mu.Unlock()
 		conn.Close()
 	}()
@@ -77,7 +90,7 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 			ws.handler.OnError(err)
 			break
 		}
-		ws.handler.OnMessage(conn, msg)
+		ws.handler.OnMessage(customConn, msg)
 	}
 }
 
@@ -85,10 +98,10 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 func (ws *WebSocketServer) Broadcast(gameID string, message []byte) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
-	for _, conn := range ws.clients[gameID] {
-		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+	for _, customConn := range ws.clients[gameID] {
+		if err := customConn.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			ws.handler.OnError(err)
-			conn.Close()
+			customConn.Conn.Close()
 		}
 	}
 }
@@ -97,11 +110,11 @@ func (ws *WebSocketServer) Broadcast(gameID string, message []byte) {
 func (ws *WebSocketServer) SendToUser(gameID string, userID string, message []byte) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
-	conn, exists := ws.clients[gameID][userID]
+	customConn, exists := ws.clients[gameID][userID]
 	if exists {
-		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+		if err := customConn.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			ws.handler.OnError(err)
-			conn.Close()
+			customConn.Conn.Close()
 			delete(ws.clients[gameID], userID)
 		}
 	} else {
@@ -114,11 +127,11 @@ func (ws *WebSocketServer) SendToUsers(gameID string, userIDs []string, message 
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	for _, userID := range userIDs {
-		conn, exists := ws.clients[gameID][userID]
+		customConn, exists := ws.clients[gameID][userID]
 		if exists {
-			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			if err := customConn.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				ws.handler.OnError(err)
-				conn.Close()
+				customConn.Conn.Close()
 				delete(ws.clients[gameID], userID)
 			}
 		} else {
