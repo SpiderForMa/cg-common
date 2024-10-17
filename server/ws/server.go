@@ -9,10 +9,10 @@ import (
 
 // WebSocketHandler 定义 WebSocket 事件处理器的接口
 type WebSocketHandler interface {
-	OnOpen(conn *CustomConn)
-	OnClose(conn *CustomConn)
+	OnOpen(ws *WebSocketServer, conn *CustomConn)
+	OnClose(ws *WebSocketServer, conn *CustomConn)
 	OnError(err error)
-	OnMessage(conn *CustomConn, msg []byte)
+	OnMessage(ws *WebSocketServer, conn *CustomConn, msg []byte)
 }
 
 // WebSocketServer 封装 WebSocket 服务器
@@ -65,7 +65,7 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 		UserID: userID,
 	}
 
-	ws.handler.OnOpen(customConn)
+	ws.handler.OnOpen(ws, customConn)
 
 	// 添加到连接列表
 	ws.mu.Lock()
@@ -76,7 +76,7 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 	ws.mu.Unlock()
 
 	defer func() {
-		ws.handler.OnClose(customConn)
+		ws.handler.OnClose(ws, customConn)
 		ws.mu.Lock()
 		delete(ws.clients[appID], userID)
 		ws.mu.Unlock()
@@ -90,7 +90,7 @@ func (ws *WebSocketServer) HandleConnection(w http.ResponseWriter, r *http.Reque
 			ws.handler.OnError(err)
 			break
 		}
-		ws.handler.OnMessage(customConn, msg)
+		ws.handler.OnMessage(ws, customConn, msg)
 	}
 }
 
