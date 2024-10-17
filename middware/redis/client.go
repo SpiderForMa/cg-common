@@ -11,9 +11,9 @@ var ctx = context.Background()
 
 // RedisConfig 用于存储 Redis 配置
 type RedisConfig struct {
-	Addr     string // Redis 地址
-	Password string // Redis 密码
-	DB       int    // 使用的数据库编号
+	Addr     string `json:"addr"`     // Redis 地址
+	Password string `json:"password"` // Redis 密码
+	DB       int    `json:"db"`       // 使用的数据库编号
 }
 
 // InitRedis 初始化 Redis 连接
